@@ -1,9 +1,8 @@
 import http from "node:http";
 import { json } from "./middlewares/json.js";
-import { Database } from "./database.js";
-import { randomUUID } from "node:crypto";
+import { routes } from "./routes.js";
+import { extractQueryParams } from "./utils/extract-query-params.js";
 
-const database = new Database();
 const SERVER_PORT = 3333;
 
 const server = http.createServer(async (request, response) => {
@@ -11,25 +10,22 @@ const server = http.createServer(async (request, response) => {
 
   await json(request, response);
 
-  if (method === "GET" && url === "/users") {
-    const users = database.select("users");
+  const route = routes.find(
+    (route) => route.method === method && route.path.test(url)
+  );
 
-    return response.end(JSON.stringify(users));
+  if (route) {
+    const routeParams = request.url.match(route.path);
+
+    const { query, ...params } = routeParams.groups;
+
+    request.params = { ...params };
+    request.query = query ? extractQueryParams(query) : {};
+
+    return route.handler(request, response);
   }
 
-  if (method === "POST" && url === "/users") {
-    const { name, email } = request.body;
-
-    const user = {
-      id: randomUUID(),
-      name,
-      email,
-    };
-
-    database.insert("users", user);
-
-    return response.writeHead(201).end();
-  }
+  return response.writeHead(404).end();
 });
 
 server.listen(SERVER_PORT, () => {
